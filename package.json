@@ -14,7 +14,9 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@jvalue/node-dry-basics": "0.0.3"
+    "@jvalue/node-dry-basics": "0.0.3",
+    "@types/amqplib": "0.x",
+    "amqplib": "0.x"
   },
   "devDependencies": {
     "@types/node": "^14.14.7",
