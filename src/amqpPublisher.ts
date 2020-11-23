@@ -1,15 +1,24 @@
 import * as AMQP from 'amqplib'
-
 import { sleep, stringifiers } from '@jvalue/node-dry-basics'
+
+import * as AmqpConnector from './amqpConnector'
+
+const LOG_MAX_LENGTH = 30
 
 export class AmqpPublisher {
   private channel?: AMQP.Channel
 
-  public async init (amqpUrl: string, exchange: string, retries: number, msBackoff: number): Promise<void> {
-    for (let i = 0; i <= retries; i++) {
+  public async init (
+    amqpUrl: string,
+    retries: number,
+    msBackoff: number,
+    exchange: { name: string, type: string },
+    exchangeOptions: AMQP.Options.AssertExchange
+  ): Promise<void> {
+    for (let i = 1; i <= retries; i++) {
       try {
-        const connection = await this.connect(amqpUrl)
-        this.channel = await this.initChannel(connection, exchange)
+        const connection = await AmqpConnector.connect(amqpUrl)
+        this.channel = await AmqpConnector.initChannel(connection, exchange, exchangeOptions)
         return
       } catch (error) {
         console.info(`Error initializing the AMQP Client (${i}/${retries}):
@@ -20,40 +29,21 @@ export class AmqpPublisher {
     throw new Error(`Could not connect to AMQP broker at ${amqpUrl}`)
   }
 
-  private async connect (amqpUrl: string): Promise<AMQP.Connection> {
-    try {
-      const connection = await AMQP.connect(amqpUrl)
-      console.info(`Connection to amqp host at ${amqpUrl} successful`)
-      return connection
-    } catch (error) {
-      console.error(`Error connecting to amqp host at ${amqpUrl}: ${error}`)
-      throw error
-    }
-  }
-
-  private async initChannel (connection: AMQP.Connection, exchange: string): Promise<AMQP.Channel> {
-    try {
-      const channel = await connection.createChannel()
-      await channel.assertExchange(exchange, 'topic')
-      console.info(`Exchange ${exchange} successfully initialized.`)
-      return channel
-    } catch (error) {
-      console.error(`Error creating exchange ${exchange}: ${error}`)
-      throw error
-    }
-  }
-
-  public publish (exchange: string, topic: string, content: object): boolean {
+  public publish (exchangeName: string, routingKey: string, content: object): boolean {
     if (this.channel === undefined) {
       console.error('Publish not possible, AMQP client not initialized.')
       return false
     } else {
       try {
-        const success = this.channel.publish(exchange, topic, Buffer.from(JSON.stringify(content)))
-        console.debug(`[EventProduce] ${topic}: ${stringifiers.stringify(content)}`)
+        const success = this.channel.publish(
+          exchangeName,
+          routingKey,
+          Buffer.from(JSON.stringify(content))
+        )
+        console.debug(`[AMQP][Produce] ${routingKey}: ${stringifiers.stringify(content, LOG_MAX_LENGTH)}`)
         return success
       } catch (error) {
-        console.error(`Error publishing to exchange ${exchange} under key ${topic}: ${error}`)
+        console.error(`Error publishing to exchange ${exchangeName} under key ${routingKey}: ${error}`)
         return false
       }
     }
