@@ -1,6 +1,6 @@
 {
   "name": "@jvalue/node-dry-amqp",
-  "version": "0.0.3",
+  "version": "0.0.1",
   "description": "Reusable nodejs amqp util library ",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
