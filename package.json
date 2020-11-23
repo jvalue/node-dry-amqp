@@ -1,0 +1,46 @@
+{
+  "name": "@jvalue/node-dry-amqp",
+  "version": "0.0.3",
+  "description": "Reusable nodejs amqp util library ",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "/dist"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint src --fix",
+    "lint-ci": "eslint src --max-warnings=0",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@jvalue/node-dry-basics": "0.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^14.14.7",
+    "@typescript-eslint/eslint-plugin": "^4.4.1",
+    "@typescript-eslint/parser": "^4.4.1",
+    "eslint": "^7.11.0",
+    "eslint-config-standard": "^14.1.1",
+    "eslint-config-standard-with-typescript": "19.0.1",
+    "eslint-plugin-import": "^2.22.1",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^4.2.1",
+    "eslint-plugin-standard": "^4.0.1",
+    "typescript": "^4.0.5"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jvalue/node-dry.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "Apache License 2.0",
+  "bugs": {
+    "url": "https://github.com/jvalue/node-dry/issues"
+  },
+  "homepage": "https://github.com/jvalue/node-dry#readme"
+}
