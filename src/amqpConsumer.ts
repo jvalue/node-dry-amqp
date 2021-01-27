@@ -1,5 +1,5 @@
 import * as AMQP from 'amqplib'
-import { sleep, stringifiers } from '@jvalue/node-dry-basics'
+import { stringifiers } from '@jvalue/node-dry-basics'
 
 import * as AmqpConnector from './amqpConnector'
 
@@ -9,17 +9,7 @@ export class AmqpConsumer {
   private connection?: AMQP.Connection
 
   public async init (amqpUrl: string, retries: number, msBackoff: number): Promise<void> {
-    for (let i = 1; i <= retries; i++) {
-      try {
-        this.connection = await AmqpConnector.connect(amqpUrl)
-        return
-      } catch (error) {
-        console.info(`Error initializing the AMQP Client (${i}/${retries}):
-        ${error}. Retrying in ${msBackoff}...`)
-      }
-      await sleep(msBackoff)
-    }
-    throw new Error(`Could not connect to AMQP broker at ${amqpUrl}`)
+    this.connection = await AmqpConnector.connect(amqpUrl, retries, msBackoff)
   }
 
   public async registerConsumer (
