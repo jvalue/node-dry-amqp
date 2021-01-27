@@ -1,14 +1,20 @@
 import * as AMQP from 'amqplib'
+import { sleep } from '@jvalue/node-dry-basics'
 
-export async function connect (amqpUrl: string): Promise<AMQP.Connection> {
-  try {
-    const connection = await AMQP.connect(amqpUrl)
-    console.info(`Connection to amqp host at ${amqpUrl} successful`)
-    return connection
-  } catch (error) {
-    console.error(`Error connecting to amqp host at ${amqpUrl}: ${error}`)
-    throw error
+export async function connect (amqpUrl: string, retries = 0, retryDelayInMs = 2000): Promise<AMQP.Connection> {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await AMQP.connect(amqpUrl)
+    } catch (error) {
+      if (i === retries) {
+        throw error
+      }
+      console.info(`Failed to connect to AMQP: ${error}. ` +
+        `Performing retry ${i + 1}/${retries} in ${retryDelayInMs}ms`)
+      await sleep(retryDelayInMs)
+    }
   }
+  throw new Error(`Could not connect to AMQP broker at ${amqpUrl}`)
 }
 
 export async function initChannel (
