@@ -8,16 +8,60 @@ function wrapConsumeHandler (handler: (msg: AMQP.ConsumeMessage | null) => Promi
     .catch(error => console.error(`Failed to handle '${msg?.fields.routingKey ?? 'null'}' message: ${error}`))
 }
 
+export type AmqpConsumer = (msg: AMQP.ConsumeMessage | null) => Promise<void> | void
+
+interface StoredConsumer {
+  queue: string
+  consumer: AmqpConsumer
+  options?: AMQP.Options.Consume
+}
+
 /**
  * Common super class for an amqp channel
  */
-class BaseAmqpChannel {
-  async getRawChannel (): Promise<AMQP.Channel> {
-    throw new Error('You have to implement the method getRawChannel()!')
+export class BaseAmqpChannel<T extends AMQP.Channel> {
+  protected rawChannel?: T = undefined
+  protected readonly consumers = new Map<string, StoredConsumer>()
+
+  constructor (protected readonly connection: AmqpConnection) {
   }
 
+  protected async createChannel (_connection: AMQP.Connection): Promise<T> {
+    throw new Error('You have to implement the method createChannel()!')
+  }
+
+  async getRawChannel (): Promise<T> {
+    if (this.rawChannel !== undefined) {
+      return this.rawChannel
+    }
+    const rawConnection = await this.connection.getRawConnection()
+    const channel = await this.createChannel(rawConnection)
+    // Any error must be handled, otherwise the underlying connection will be closed.
+    // The error ist just logged, because the `close` event will also be emitted after `error`
+    channel.on('error', (error: any) => {
+      console.log('Channel error:', error)
+    })
+    // If the raw channel has been closed it can not be reused, so we can remove the reference
+    channel.on('close', () => {
+      this.rawChannel = undefined
+    })
+    for (const storedConsumer of this.consumers.values()) {
+      await channel.consume(storedConsumer.queue, wrapConsumeHandler(storedConsumer.consumer), storedConsumer.options)
+    }
+    this.rawChannel = channel
+    return channel
+  }
+
+  /**
+   * Closes this channel and remove all registered consumers.
+   * Do not reuse the channel after calling the `close` method
+   */
   async close (): Promise<void> {
-    throw new Error('You have to implement the method close()!')
+    if (this.rawChannel !== undefined) {
+      await this.rawChannel.close()
+      this.consumers.clear()
+      this.connection.removeChannel(this)
+    }
   }
 
   async assertQueue (queue: string, options?: AMQP.Options.AssertQueue): Promise<AMQP.Replies.AssertQueue> {
@@ -87,15 +131,20 @@ class BaseAmqpChannel {
     return channel.sendToQueue(queue, content, options)
   }
 
-  async consume (queue: string, onMessage: (msg: AMQP.ConsumeMessage | null) => Promise<void> | void,
-    options?: AMQP.Options.Consume): Promise<AMQP.Replies.Consume> {
+  async consume (queue: string, onMessage: AmqpConsumer, options: AMQP.Options.Consume = {}):
+  Promise<AMQP.Replies.Consume> {
     const channel = await this.getRawChannel()
-    return await channel.consume(queue, wrapConsumeHandler(onMessage), options)
+    const response = await channel.consume(queue, wrapConsumeHandler(onMessage), options)
+    options.consumerTag = response.consumerTag
+    this.consumers.set(response.consumerTag, { queue, consumer: onMessage, options })
+    return response
   }
 
   async cancel (consumerTag: string): Promise<AMQP.Replies.Empty> {
     const channel = await this.getRawChannel()
-    return await channel.cancel(consumerTag)
+    const response = await channel.cancel(consumerTag)
+    this.consumers.delete(consumerTag)
+    return response
   }
 
   async get (queue: string, options?: AMQP.Options.Get): Promise<AMQP.GetMessage | false> {
@@ -139,69 +188,15 @@ class BaseAmqpChannel {
   }
 }
 
-export class AmqpChannel extends BaseAmqpChannel {
-  private rawChannel?: AMQP.Channel = undefined
-
-  constructor (protected readonly connection: AmqpConnection) {
-    super()
-  }
-
-  async getRawChannel (): Promise<AMQP.Channel> {
-    if (this.rawChannel !== undefined) {
-      return this.rawChannel
-    }
-    const rawConnection = await this.connection.getRawConnection()
-    const channel = await rawConnection.createChannel()
-    // Any error must be handled, otherwise the underlying connection will be closed.
-    // The error ist just logged, because the `close` event will also be emitted after `error`
-    channel.on('error', (error: any) => {
-      console.log('Channel error:', error)
-    })
-    // If the channel has been closed it can not be reused, so we can remove the reference
-    channel.on('close', () => {
-      this.rawChannel = undefined
-    })
-    this.rawChannel = channel
-    return channel
-  }
-
-  async close (): Promise<void> {
-    if (this.rawChannel !== undefined) {
-      await this.rawChannel.close()
-    }
+export class AmqpChannel extends BaseAmqpChannel<AMQP.Channel> {
+  protected async createChannel (connection: AMQP.Connection): Promise<AMQP.Channel> {
+    return await connection.createChannel()
   }
 }
 
-export class AmqpConfirmChannel extends BaseAmqpChannel {
-  private rawChannel?: AMQP.ConfirmChannel = undefined
-
-  constructor (protected readonly connection: AmqpConnection) {
-    super()
-  }
-
-  async getRawChannel (): Promise<AMQP.ConfirmChannel> {
-    if (this.rawChannel !== undefined) {
-      return this.rawChannel
-    }
-    const rawConnection = await this.connection.getRawConnection()
-    const channel = await rawConnection.createConfirmChannel()
-    // Any error must be handled, otherwise the underlying connection will be closed.
-    // The error ist just logged, because the `close` event will also be emitted after `error`
-    channel.on('error', (error: any) => {
-      console.log('Channel error:', error)
-    })
-    // If the channel has been closed it can not be reused, so we can remove the reference
-    channel.on('close', () => {
-      this.rawChannel = undefined
-    })
-    this.rawChannel = channel
-    return channel
-  }
-
-  async close (): Promise<void> {
-    if (this.rawChannel !== undefined) {
-      await this.rawChannel.close()
-    }
+export class AmqpConfirmChannel extends BaseAmqpChannel<AMQP.ConfirmChannel> {
+  protected async createChannel (connection: AMQP.Connection): Promise<AMQP.ConfirmChannel> {
+    return await connection.createConfirmChannel()
   }
 
   async publish (exchange: string, routingKey: string, content: Buffer,

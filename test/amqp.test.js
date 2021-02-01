@@ -19,7 +19,6 @@ const CONNECT_RETRIES = 5
 const CONNECT_RETRY_DELAY_MS = 5000
 
 const TEST_TIMEOUT = 120000
-const RABBIT_MQ_STARTUP_TIME = 15000
 const PUBLICATION_DELAY_MS = 1000
 
 async function startRabbitMQ () {
@@ -82,7 +81,6 @@ describe('node-dry-amqp test', () => {
     await expect(channel.publish('test-exchange', 'test.publish', Buffer.from('Test message'))).rejects.toBeDefined()
 
     await exec(`docker start ${CONTAINER_NAME}`)
-    await sleep(RABBIT_MQ_STARTUP_TIME)
 
     await expect(channel.publish('test-exchange', 'test.publish', Buffer.from('Test message'))).resolves.toEqual(true)
   }, TEST_TIMEOUT)
@@ -128,29 +126,50 @@ describe('node-dry-amqp test', () => {
     await sleep(PUBLICATION_DELAY_MS)
   }, TEST_TIMEOUT)
 
-  test.skip('consumer survives RabbitMQ restart', async () => {
-    expect.assertions(3)
+  test('consumer survives RabbitMQ restart', async () => {
+    expect.assertions(4)
 
     await startRabbitMQ()
-    connection = new AmqpConnection(AMQP_URL, CONNECT_RETRIES, CONNECT_RETRY_DELAY_MS)
+    const connectionLossHandler = jest.fn()
+    connection = new AmqpConnection(AMQP_URL, CONNECT_RETRIES, CONNECT_RETRY_DELAY_MS, connectionLossHandler)
     const consumerChannel = await connection.createChannel()
 
     await consumerChannel.assertExchange('test-exchange', 'topic')
     await consumerChannel.assertQueue('test-queue')
     await consumerChannel.bindQueue('test-queue', 'test-exchange', 'test.publish')
-    await consumerChannel.consume('test-queue', async msg => {
+    await consumerChannel.consume('test-queue', msg => {
       expect(msg).toBeDefined()
       expect(msg.content.toString()).toEqual('Test message')
-      throw new Error('Test')
     })
 
-    await exec(`docker stop ${CONTAINER_NAME}`)
+    await exec(`docker kill ${CONTAINER_NAME}`)
     await exec(`docker start ${CONTAINER_NAME}`)
-    await sleep(RABBIT_MQ_STARTUP_TIME)
 
     const publisherChannel = await connection.createChannel()
     const publishResult = publisherChannel.publish('test-exchange', 'test.publish', Buffer.from('Test message'))
     await expect(publishResult).resolves.toEqual(true)
     await sleep(PUBLICATION_DELAY_MS)
+    expect(connectionLossHandler).toBeCalledTimes(0)
+  }, TEST_TIMEOUT)
+
+  test('connection loss handler is called', async () => {
+    await startRabbitMQ()
+    const connectionLossHandler = jest.fn()
+    connection = new AmqpConnection(AMQP_URL, CONNECT_RETRIES, CONNECT_RETRY_DELAY_MS, connectionLossHandler)
+    const consumerChannel = await connection.createChannel()
+
+    await consumerChannel.assertExchange('test-exchange', 'topic')
+    await consumerChannel.assertQueue('test-queue')
+    await consumerChannel.bindQueue('test-queue', 'test-exchange', 'test.publish')
+    await consumerChannel.consume('test-queue', msg => {
+      expect(msg).toBeDefined()
+      expect(msg.content.toString()).toEqual('Test message')
+    })
+
+    // Kill RabbitMQ to trigger a connection error
+    // A stop does not work, because it results in an orderly connection close
+    await exec(`docker kill ${CONTAINER_NAME}`)
+    await sleep(30000) // 5 retries with each 5000 delay plus some safety delay
+    expect(connectionLossHandler).toBeCalledTimes(1)
   }, TEST_TIMEOUT)
 })
