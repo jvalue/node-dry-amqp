@@ -20,7 +20,7 @@ export async function connect (amqpUrl: string, retries = 0, retryDelayInMs = 20
 export async function initChannel (
   connection: AMQP.Connection,
   exchange: {name: string, type: string},
-  exchangeOptions: AMQP.Options.AssertExchange
+  exchangeOptions?: AMQP.Options.AssertExchange
 ): Promise<AMQP.Channel> {
   try {
     const channel = await connection.createChannel()
