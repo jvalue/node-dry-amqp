@@ -2,8 +2,7 @@ import * as AMQP from 'amqplib'
 
 import { AmqpConnection } from './amqpConnection'
 
-function wrapConsumeHandler (handler: (msg: AMQP.ConsumeMessage | null) => Promise<void> | void):
-((msg: AMQP.ConsumeMessage | null) => | void) {
+function wrapConsumeHandler (handler: AmqpConsumer): ((msg: AMQP.ConsumeMessage | null) => void) {
   return async msg => await Promise.resolve(handler(msg))
     .catch(error => console.error(`Failed to handle '${msg?.fields.routingKey ?? 'null'}' message: ${error}`))
 }
@@ -53,7 +52,7 @@ export class BaseAmqpChannel<T extends AMQP.Channel> {
   }
 
   /**
-   * Closes this channel and remove all registered consumers.
+   * Closes this channel and removes all registered consumers.
    * Do not reuse the channel after calling the `close` method
    */
   async close (): Promise<void> {

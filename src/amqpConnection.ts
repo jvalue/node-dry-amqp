@@ -56,11 +56,14 @@ export class AmqpConnection {
       this.rawConnection = undefined
     })
     this.rawConnection = connection
-    // Inform all registered channels about the successfully established connection
+    await this.reconnectChannels()
+    return connection
+  }
+
+  private async reconnectChannels (): Promise<void> {
     for (const channel of this.channels) {
       await channel.getRawChannel()
     }
-    return connection
   }
 
   removeChannel (channel: BaseAmqpChannel<AMQP.Channel>): void {
