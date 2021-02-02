@@ -1,5 +1,5 @@
 import * as AMQP from 'amqplib'
-import { sleep, stringifiers } from '@jvalue/node-dry-basics'
+import { stringifiers } from '@jvalue/node-dry-basics'
 
 import * as AmqpConnector from './amqpConnector'
 
@@ -15,18 +15,8 @@ export class AmqpPublisher {
     exchange: { name: string, type: string },
     exchangeOptions: AMQP.Options.AssertExchange
   ): Promise<void> {
-    for (let i = 1; i <= retries; i++) {
-      try {
-        const connection = await AmqpConnector.connect(amqpUrl)
-        this.channel = await AmqpConnector.initChannel(connection, exchange, exchangeOptions)
-        return
-      } catch (error) {
-        console.info(`Error initializing the AMQP Client (${i}/${retries}):
-        ${error}. Retrying in ${msBackoff}...`)
-        await sleep(msBackoff)
-      }
-    }
-    throw new Error(`Could not connect to AMQP broker at ${amqpUrl}`)
+    const connection = await AmqpConnector.connect(amqpUrl, retries, msBackoff)
+    this.channel = await AmqpConnector.initChannel(connection, exchange, exchangeOptions)
   }
 
   public publish (exchangeName: string, routingKey: string, content: object): boolean {
