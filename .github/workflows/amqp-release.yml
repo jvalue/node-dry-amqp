@@ -1,6 +1,6 @@
 name: Publish amqp
 
-on: 
+on:
   release:
     types: [ created ]
 
@@ -12,6 +12,7 @@ jobs:
       - uses: actions/checkout@v2
       - run: npm install
       - run: npm run lint-ci
+      - run: npm run test
       - run: npm run build
       # Note: Currently only publishing to NPM since GitHub does not allow unauthenticated access to public packages!
       - name: Setup node for NPMjs Packages
