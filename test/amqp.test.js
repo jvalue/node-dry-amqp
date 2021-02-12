@@ -172,4 +172,67 @@ describe('node-dry-amqp test', () => {
     await sleep(30000) // 5 retries with each 5000 delay plus some safety delay
     expect(connectionLossHandler).toBeCalledTimes(1)
   }, TEST_TIMEOUT)
+
+  test('pending messages are delivered on start', async () => {
+    expect.assertions(4)
+
+    await startRabbitMQ()
+    const connectionLossHandler = jest.fn()
+    const publisherConnection = new AmqpConnection(
+      AMQP_URL, CONNECT_RETRIES, CONNECT_RETRY_DELAY_MS, connectionLossHandler)
+
+    const publisherChannel = await publisherConnection.createChannel()
+    await publisherChannel.assertExchange('test-exchange', 'topic')
+    await publisherChannel.assertQueue('test-queue')
+    await publisherChannel.bindQueue('test-queue', 'test-exchange', 'test.publish')
+
+    const publishResult = publisherChannel.publish('test-exchange', 'test.publish', Buffer.from('Test message'))
+    await expect(publishResult).resolves.toEqual(true)
+    await publisherConnection.close()
+    await sleep(PUBLICATION_DELAY_MS)
+
+    connection = new AmqpConnection(AMQP_URL, CONNECT_RETRIES, CONNECT_RETRY_DELAY_MS, connectionLossHandler)
+    const consumerChannel = await connection.createChannel()
+    await consumerChannel.consume('test-queue', msg => {
+      expect(msg).toBeDefined()
+      expect(msg.content.toString()).toEqual('Test message')
+    })
+
+    await sleep(PUBLICATION_DELAY_MS)
+    expect(connectionLossHandler).toBeCalledTimes(0)
+  }, TEST_TIMEOUT)
+
+  test('persistent messages do survive RabbitMQ restart and are delivered on start', async () => {
+    expect.assertions(4)
+
+    await startRabbitMQ()
+    const connectionLossHandler = jest.fn()
+    const publisherConnection = new AmqpConnection(
+      AMQP_URL, CONNECT_RETRIES, CONNECT_RETRY_DELAY_MS, connectionLossHandler)
+
+    const publisherChannel = await publisherConnection.createChannel()
+    await publisherChannel.assertExchange('test-exchange', 'topic')
+    await publisherChannel.assertQueue('test-queue')
+    await publisherChannel.bindQueue('test-queue', 'test-exchange', 'test.publish')
+
+    const publishResult = publisherChannel.publish('test-exchange', 'test.publish', Buffer.from('Test message'),
+      { persistent: true })
+    await expect(publishResult).resolves.toEqual(true)
+    await publisherConnection.close()
+    await sleep(PUBLICATION_DELAY_MS)
+
+    // Restart RabbitMQ
+    await exec(`docker kill ${CONTAINER_NAME}`)
+    await exec(`docker start ${CONTAINER_NAME}`)
+
+    connection = new AmqpConnection(AMQP_URL, CONNECT_RETRIES, CONNECT_RETRY_DELAY_MS, connectionLossHandler)
+    const consumerChannel = await connection.createChannel()
+    await consumerChannel.consume('test-queue', msg => {
+      expect(msg).toBeDefined()
+      expect(msg.content.toString()).toEqual('Test message')
+    })
+
+    await sleep(PUBLICATION_DELAY_MS)
+    expect(connectionLossHandler).toBeCalledTimes(0)
+  }, TEST_TIMEOUT)
 })

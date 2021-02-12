@@ -9,17 +9,22 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - run: npm install
-      - run: npm run lint-ci
-      - run: npm run test
-      - run: npm run build
+      - name: Checkout
+        uses: actions/checkout@v2
       # Note: Currently only publishing to NPM since GitHub does not allow unauthenticated access to public packages!
-      - name: Setup node for NPMjs Packages
+      - name: Setup node
         uses: actions/setup-node@v1
         with:
-          node-version: '14.x'
+          node-version: '14'
           registry-url: 'https://registry.npmjs.org'
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint files
+        run: npm run lint-ci
+      - name: Test
+        run: npm run test
+      - name: Build
+        run: npm run build
       - name: Publish to NPMjs Packages
         run: npm publish --access public
         env:
